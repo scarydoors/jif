@@ -1,5 +1,4 @@
-use log::debug;
-use bitter::{BitReader, LittleEndianReader};
+use super::bit_reader::BitReader;
 
 pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
     let mut code_table = init_code_table(minimum_code_size);
@@ -8,13 +7,13 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
     let end_of_information_code = clear_code + 1;
     println!("clear_code={clear_code} end_of_information_code={end_of_information_code}");
 
-    let mut reader = LittleEndianReader::new(buf);
+    let mut reader = BitReader::new(buf);
     let mut code_size = minimum_code_size + 1;
 
     let mut indicies: Vec<u8> = Vec::new();
 
-    reader.read_bits(code_size).unwrap();
-    let mut last_code = reader.read_bits(code_size).unwrap() as usize;
+    reader.next(code_size).unwrap();
+    let mut last_code = reader.next(code_size).unwrap() as usize;
 
     let last_code_indicies = code_table.get(last_code as usize).unwrap().clone();
 
@@ -23,7 +22,7 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
     indicies.extend_from_slice(&last_code_indicies);
 
     // does code exist in the string table
-    while let Some(code) = reader.read_bits(code_size) {
+    while let Some(code) = reader.next(code_size) {
         if code_table.len() == (1 << code_size) - 1 && code_size < 12 {
             code_size += 1;
         }
@@ -32,7 +31,7 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
             println!("cleared");
             code_size = minimum_code_size + 1;
             code_table = init_code_table(minimum_code_size);
-            last_code = reader.read_bits(code_size).unwrap() as usize;
+            last_code = reader.next(code_size).unwrap() as usize;
             let last_code_indicies = code_table.get(last_code as usize).unwrap().clone();
             indicies.extend_from_slice(&last_code_indicies);
             continue;

@@ -25,7 +25,6 @@ fn main() -> Result<()> {
         let indexes = block.render_block.image_indexes.as_ref().unwrap();
         //indexes.chunks(10).for_each(|chunk|  println!("{:?}", chunk));
         ppm_writer::write_ppm(&format!("yeah/frame_{}.ppm", i), width, height, indexes.as_ref(), color_table.as_ref())?;
-
     }
     Ok(())
 }

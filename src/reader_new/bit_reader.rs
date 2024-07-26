@@ -1,7 +1,7 @@
 pub struct BitReader<'a> {
     buf: &'a [u8],
     // index by bit instead of by byte
-    position: u64,
+    position: usize,
     length: usize,
 }
 
@@ -14,11 +14,11 @@ impl<'a> BitReader<'a> {
         }
     }
 
-    pub fn next(&mut self, count: u64) -> Option<u64> {
+    pub fn next(&mut self, count: u32) -> Option<u64> {
         let start_position = self.position;
-        let end_position = self.position + count;
+        let end_position = self.position + count as usize;
 
-        if end_position > self.length as u64 { 
+        if end_position > self.length {
             return None;
         }
         // end_position not inclusive, i always forget..
