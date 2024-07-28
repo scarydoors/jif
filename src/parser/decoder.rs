@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use super::lzw;
+use super::{lzw, DisposalMethod};
 
 use thiserror::Error;
 use anyhow::{anyhow, Result};
@@ -48,7 +48,7 @@ impl TryFrom<u8> for ExtensionType {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct GraphicControlExtension {
-    disposal_method: u8,
+    disposal_method: Option<DisposalMethod>,
     user_input_flag: bool,
     transparent_color_flag: bool,
 
@@ -433,7 +433,7 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                 assert_eq!(block_terminator, 0);
 
                 let graphic_control_extension = GraphicControlExtension {
-                    disposal_method,
+                    disposal_method: DisposalMethod::from_u8(disposal_method),
                     user_input_flag,
                     transparent_color_flag,
 
