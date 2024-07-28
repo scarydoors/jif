@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
-mod lzw;
-mod bit_reader;
+use super::lzw;
 
 use thiserror::Error;
 use anyhow::{anyhow, Result};
@@ -10,7 +9,6 @@ use log::debug;
 use std::io::prelude::*;
 use std::str;
 use std::fmt::Debug;
-
 
 const EXTENSION_INTRODUCER: u8 = 0x21;
 const IMAGE_DESCRIPTOR_LABEL: u8 = 0x2c;
@@ -158,7 +156,7 @@ pub(crate) enum ParserError {
 }
 
 #[derive(Debug)]
-pub struct Parser<'a, T: Read> {
+pub struct Decoder<'a, T: Read> {
     inner: &'a mut T,
     pub(crate) version: Option<Version>,
     pub(crate) logical_screen_descriptor: Option<LogicalScreenDescriptor>,
@@ -167,7 +165,7 @@ pub struct Parser<'a, T: Read> {
     pub(crate) graphic_blocks: Vec<GraphicBlock>
 }
 
-impl<'a, T: Read + Debug> Parser<'a, T> {
+impl<'a, T: Read + Debug> Decoder<'a, T> {
     pub fn new(inner: &'a mut T) -> Self {
         Self {
             inner,

@@ -2,15 +2,15 @@ use std::fs::File;
 use anyhow::Result;
 
 mod ppm_writer;
-mod reader_new;
-use reader_new::Parser;
+mod parser;
 
+use parser::Decoder;
 
 fn main() -> Result<()> {
     env_logger::init();
     let mut file = File::open("./homeless-nah-id-win.gif")?;
 
-    let mut parser = Parser::new(&mut file);
+    let mut parser = Decoder::new(&mut file);
     parser.parse()?;
 
     for (i, block) in parser.graphic_blocks.iter().enumerate() {
