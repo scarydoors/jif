@@ -110,6 +110,12 @@ impl TryFrom<&str> for Version {
 }
 
 #[derive(Debug)]
+enum LoopCount {
+    Infinite,
+    Number(u16),
+}
+
+#[derive(Debug)]
 pub(crate) struct LogicalScreenDescriptor {
     pub(crate) screen_width: u16,
     pub(crate) screen_height: u16,
@@ -152,7 +158,14 @@ pub(crate) enum ParserError {
     ExpectedImageDescriptor,
 
     #[error("encountered unexpected label, this label is not supported: {0}")]
-    UnexpectedLabel(u8)
+    UnexpectedLabel(u8),
+
+    #[error("encountered application descriptor with name {name}, expected descriptor data length to be {expected}, actual length is {actual}")]
+    UnexpectedApplicationDescriptorDataLength {
+        name: String,
+        expected: usize,
+        actual: usize,
+    }
 }
 
 #[derive(Debug)]
@@ -162,7 +175,8 @@ pub struct Decoder<'a, T: Read> {
     pub(crate) logical_screen_descriptor: Option<LogicalScreenDescriptor>,
     pub(crate) global_color_table: Option<Box<[u8]>>,
     pub(crate) special_purpose_extensions: Vec<SpecialPurposeExtension>,
-    pub(crate) graphic_blocks: Vec<GraphicBlock>
+    pub(crate) graphic_blocks: Vec<GraphicBlock>,
+    loop_count: Option<LoopCount>,
 }
 
 impl<'a, T: Read + Debug> Decoder<'a, T> {
@@ -173,7 +187,8 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
             logical_screen_descriptor: None,
             global_color_table: None,
             special_purpose_extensions: Vec::new(),
-            graphic_blocks: Vec::new()
+            graphic_blocks: Vec::new(),
+            loop_count: None,
         }
     }
 
@@ -325,7 +340,6 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
             },
             ProcessImageData(mut graphic_block) => {
                 let lzw_code_size = self.read_byte()?;
-                println!("{:?}", graphic_block);
                 let data_stream = self.read_data_sub_blocks()?;
 
                 let indicies = lzw::lzw_decode(&data_stream, lzw_code_size.into());
@@ -353,6 +367,29 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
 
                 let application_authentication_code = self.read_bytes(3)?;
                 let application_data = self.read_data_sub_blocks()?;
+
+                if application_identifier.as_ref() == "NETSCAPE" && application_authentication_code.as_ref() == "2.0".as_bytes() {
+                    // PERF: we check the length twice essentially with this and the try_into below, make it so it only happens once.
+                    if application_data.len() != 3 {
+                        return Err(
+                            ParserError::UnexpectedApplicationDescriptorDataLength {
+                                name: application_identifier.into(),
+                                expected: 3,
+                                actual: application_data.len()
+                            }.into()
+                        );
+                    }
+
+                    debug_assert_eq!(1, application_data[0]);
+
+                    let loop_number = u16::from_le_bytes(application_data[1..3].try_into()?);
+                    self.loop_count = Some(
+                        match loop_number {
+                            0 => LoopCount::Infinite,
+                            number => LoopCount::Number(number)
+                        }
+                    );
+                };
 
                 self.special_purpose_extensions.push(
                     SpecialPurposeExtension::ApplicationBlock {

@@ -5,7 +5,6 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
 
     let clear_code: u16 = 1 << minimum_code_size;
     let end_of_information_code = clear_code + 1;
-    println!("clear_code={clear_code} end_of_information_code={end_of_information_code}");
 
     let mut reader = BitReader::new(buf);
     let mut code_size = minimum_code_size + 1;
@@ -17,7 +16,6 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
 
     let last_code_indicies = code_table.get(last_code as usize).unwrap().clone();
 
-    //println!("read {last_code}, length: {}, code_sz: {code_size}", code_table.len());
     // output the first code
     indicies.extend_from_slice(&last_code_indicies);
 
@@ -28,7 +26,6 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
         }
 
         if code == clear_code.into() {
-            println!("cleared");
             code_size = minimum_code_size + 1;
             code_table = init_code_table(minimum_code_size);
             last_code = reader.next(code_size).unwrap() as usize;
@@ -43,7 +40,6 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
 
         match code_table.get(code as usize) {
             Some(code_indicies) => {
-                // println!("Y found: read {code} {code:0b}, length: {}, code_sz: {code_size}", code_table.len());
                 // output {CODE} to index stream
                 indicies.extend_from_slice(code_indicies);
 
@@ -56,7 +52,6 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
                 // get {CODE-1}+K
                 new_code_table_entry.push(*first_index_of_current_code);
 
-                //println!("adding indicies in found path: {new_code_table_entry:?}");
                 // add {CODE-1}+K to the code table
                 code_table.push(new_code_table_entry);
 
@@ -64,7 +59,6 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
                 last_code = code as usize;
             },
             None => {
-                //println!("N found: read {code} {code:0b}, length: {}, code_sz: {code_size}", code_table.len());
                 // {CODE-1}
                 let mut new_code_table_entry = code_table.get(last_code).unwrap().clone();
                 // let K be the first index of {CODE-1}
@@ -75,7 +69,6 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
                 // output {CODE-1}+K to index stream
                 indicies.extend_from_slice(&new_code_table_entry);
 
-                //println!("adding indicies in NOT found path: {new_code_table_entry:?}");
                 // add {CODE-1}+K to code table
                 code_table.push(new_code_table_entry);
 
@@ -86,8 +79,6 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
 
     }
 
-    println!("min code size: {}", minimum_code_size);
-    //println!("{:?}", code_table);
     indicies
 }
 
