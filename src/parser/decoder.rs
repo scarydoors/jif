@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use super::{lzw, DisposalMethod};
+use super::{lzw, DisposalMethod, LoopCount};
 
 use thiserror::Error;
 use anyhow::{anyhow, Result};
@@ -47,7 +47,7 @@ impl TryFrom<u8> for ExtensionType {
 
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct GraphicControlExtension {
+struct GraphicControlExtension {
     disposal_method: Option<DisposalMethod>,
     user_input_flag: bool,
     transparent_color_flag: bool,
@@ -57,32 +57,32 @@ pub(crate) struct GraphicControlExtension {
 }
 
 #[derive(Debug)]
-pub(crate) struct TableBasedImage {
+struct TableBasedImage {
     // includes image descriptor inline
-    pub(crate) left_position: u16,
-    pub(crate) top_position: u16,
+    left_position: u16,
+    top_position: u16,
 
-    pub(crate) width: u16,
-    pub(crate) height: u16,
+    width: u16,
+    height: u16,
 
-    pub(crate) local_color_table_flag: bool,
-    pub(crate) interlace_flag: bool,
-    pub(crate) sort_flag: bool,
-    pub(crate) local_color_table_size: Option<u32>,
+    local_color_table_flag: bool,
+    interlace_flag: bool,
+    sort_flag: bool,
+    local_color_table_size: Option<u32>,
 
-    pub(crate) local_color_table: Option<Box<[u8]>>,
+    local_color_table: Option<Box<[u8]>>,
 
-    pub(crate) image_indexes: Option<Box<[u8]>>,
+    image_indexes: Option<Box<[u8]>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct GraphicBlock {
-    pub(crate) extension: Option<GraphicControlExtension>,
-    pub(crate) render_block: TableBasedImage,
+struct GraphicBlock {
+    extension: Option<GraphicControlExtension>,
+    render_block: TableBasedImage,
 }
 
 #[derive(Debug)]
-pub(crate) enum SpecialPurposeExtension {
+enum SpecialPurposeExtension {
     ApplicationBlock {
         application_identifier: Box<str>,
         application_authentication_code: Box<[u8]>,
@@ -92,7 +92,7 @@ pub(crate) enum SpecialPurposeExtension {
 }
 
 #[derive(Debug)]
-pub(crate) enum Version {
+enum Version {
     V87a,
     V89a
 }
@@ -110,25 +110,19 @@ impl TryFrom<&str> for Version {
 }
 
 #[derive(Debug)]
-enum LoopCount {
-    Infinite,
-    Number(u16),
+struct LogicalScreenDescriptor {
+    pub(super) screen_width: u16,
+    pub(super) screen_height: u16,
+    global_color_table_flag: bool,
+    color_resolution: u8,
+    sort_flag: bool,
+    global_color_table_size: Option<u32>,
+    background_color_index: u8,
+    pixel_aspect_ratio: u8,
 }
 
 #[derive(Debug)]
-pub(crate) struct LogicalScreenDescriptor {
-    pub(crate) screen_width: u16,
-    pub(crate) screen_height: u16,
-    pub(crate) global_color_table_flag: bool,
-    pub(crate) color_resolution: u8,
-    pub(crate) sort_flag: bool,
-    pub(crate) global_color_table_size: Option<u32>,
-    pub(crate) background_color_index: u8,
-    pub(crate) pixel_aspect_ratio: u8,
-}
-
-#[derive(Debug)]
-pub(crate) enum ParserState {
+enum ParserState {
     ProcessMagic,
     ProcessLogicalScreenDescriptor,
     ProcessGlobalColorTable,
@@ -144,7 +138,7 @@ pub(crate) enum ParserState {
 }
 
 #[derive(Error, Debug)]
-pub(crate) enum ParserError {
+enum ParserError {
     #[error("signature is invalid")]
     InvalidSignature,
 
@@ -171,11 +165,11 @@ pub(crate) enum ParserError {
 #[derive(Debug)]
 pub struct Decoder<'a, T: Read> {
     inner: &'a mut T,
-    pub(crate) version: Option<Version>,
-    pub(crate) logical_screen_descriptor: Option<LogicalScreenDescriptor>,
-    pub(crate) global_color_table: Option<Box<[u8]>>,
-    pub(crate) special_purpose_extensions: Vec<SpecialPurposeExtension>,
-    pub(crate) graphic_blocks: Vec<GraphicBlock>,
+    version: Option<Version>,
+    logical_screen_descriptor: Option<LogicalScreenDescriptor>,
+    global_color_table: Option<Box<[u8]>>,
+    special_purpose_extensions: Vec<SpecialPurposeExtension>,
+    graphic_blocks: Vec<GraphicBlock>,
     loop_count: Option<LoopCount>,
 }
 
