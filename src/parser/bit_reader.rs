@@ -48,13 +48,7 @@ mod tests {
     #[test]
     fn it_works() {
         let buffer = &[
-            0b10000100,
-            0b10001111,
-            0b10101001,
-            0b11001011,
-            0b11101101,
-            0b00001111,
-            0b10100011
+            0b10000100, 0b10001111, 0b10101001, 0b11001011, 0b11101101, 0b00001111, 0b10100011,
         ];
         let mut reader = BitReader::new(buffer);
         assert_eq!(reader.next(3), 0b00000100);

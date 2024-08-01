@@ -1,8 +1,8 @@
-use std::fs::File;
 use anyhow::Result;
+use std::fs::File;
 
-mod ppm_writer;
 mod parser;
+mod ppm_writer;
 
 use parser::Decoder;
 

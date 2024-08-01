@@ -1,6 +1,14 @@
 mod bit_reader;
 mod lzw;
 
+use anyhow::{anyhow, Result};
+use log::debug;
+use thiserror::Error;
+
+use std::fmt::Debug;
+use std::io::prelude::*;
+use std::str;
+
 #[derive(Debug, Clone, Copy)]
 pub enum LoopCount {
     Infinite,
@@ -25,14 +33,6 @@ impl DisposalMethod {
         }
     }
 }
-
-use thiserror::Error;
-use anyhow::{anyhow, Result};
-use log::debug;
-
-use std::io::prelude::*;
-use std::str;
-use std::fmt::Debug;
 
 const EXTENSION_INTRODUCER: u8 = 0x21;
 const IMAGE_DESCRIPTOR_LABEL: u8 = 0x2c;
@@ -64,11 +64,10 @@ impl TryFrom<u8> for ExtensionType {
             GRAPHIC_CONTROL_EXTENSION => Ok(GraphicControl),
             PLAIN_TEXT_EXTENSION => Ok(PlainText),
 
-            _ => Err(ParserError::InvalidExtensionLabel(value))
+            _ => Err(ParserError::InvalidExtensionLabel(value)),
         }
     }
 }
-
 
 #[derive(Debug, Clone)]
 struct GraphicControlExtension {
@@ -112,13 +111,13 @@ enum SpecialPurposeExtension {
         application_authentication_code: Box<[u8]>,
         application_data: Box<[u8]>,
     },
-    CommentBlock(Box<[u8]>)
+    CommentBlock(Box<[u8]>),
 }
 
 #[derive(Debug)]
 enum Version {
     V87a,
-    V89a
+    V89a,
 }
 
 impl TryFrom<&str> for Version {
@@ -128,7 +127,7 @@ impl TryFrom<&str> for Version {
         match value {
             "87a" => Ok(Version::V87a),
             "89a" => Ok(Version::V89a),
-            version => Err(ParserError::UnsupportedVersion(version.into()))
+            version => Err(ParserError::UnsupportedVersion(version.into())),
         }
     }
 }
@@ -183,7 +182,7 @@ enum ParserError {
         name: String,
         expected: usize,
         actual: usize,
-    }
+    },
 }
 
 #[derive(Debug)]
@@ -221,14 +220,14 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
         }
     }
 
-    fn process_next_state(&mut self, next_state: ParserState) -> Result<ParserState>  {
+    fn process_next_state(&mut self, next_state: ParserState) -> Result<ParserState> {
         use ParserState::*;
 
         match next_state {
             ProcessMagic => {
                 let signature = self.read_str(3)?;
                 if signature.as_ref() != "GIF" {
-                    return Err(ParserError::InvalidSignature.into())
+                    return Err(ParserError::InvalidSignature.into());
                 }
                 debug!("processed signature, got GIF");
 
@@ -236,7 +235,7 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                 debug!("processed version, got {:?}", self.version);
 
                 Ok(ProcessLogicalScreenDescriptor)
-            },
+            }
             ProcessLogicalScreenDescriptor => {
                 let screen_width = self.read_u16()?;
                 let screen_height = self.read_u16()?;
@@ -268,7 +267,10 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                     pixel_aspect_ratio,
                 });
 
-                debug!("processed logical screen descriptor, got: {:#?}", self.logical_screen_descriptor);
+                debug!(
+                    "processed logical screen descriptor, got: {:#?}",
+                    self.logical_screen_descriptor
+                );
 
                 let next_state = if global_color_table_flag {
                     ProcessGlobalColorTable
@@ -277,19 +279,25 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                 };
 
                 Ok(next_state)
-            },
+            }
             ProcessGlobalColorTable => {
-                let screen_desc = self.logical_screen_descriptor.as_ref().expect("logical screen descriptor should not be none");
-                let size = screen_desc.global_color_table_size.expect("global color table size should not be none");
+                let screen_desc = self
+                    .logical_screen_descriptor
+                    .as_ref()
+                    .expect("logical screen descriptor should not be none");
+                let size = screen_desc
+                    .global_color_table_size
+                    .expect("global color table size should not be none");
 
                 self.global_color_table = Some(self.read_bytes(size as usize)?);
-                debug!("processed global color table, got: {:#?}", self.global_color_table);
+                debug!(
+                    "processed global color table, got: {:#?}",
+                    self.global_color_table
+                );
 
                 Ok(DetermineNextBlock(None))
-            },
-            ProcessTrailer => {
-                Ok(Done)
             }
+            ProcessTrailer => Ok(Done),
             DetermineNextBlock(graphic_control_extension) => {
                 let introducer_or_label = self.read_byte()?;
 
@@ -299,9 +307,9 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                     EXTENSION_INTRODUCER => Ok(ProcessExtension(self.read_byte()?)),
                     IMAGE_DESCRIPTOR_LABEL => Ok(ProcessImageDescriptor(graphic_control_extension)),
                     TRAILER_LABEL => Ok(ProcessTrailer),
-                    label => Err(ParserError::UnexpectedLabel(label).into())
+                    label => Err(ParserError::UnexpectedLabel(label).into()),
                 }
-            },
+            }
             ProcessExtension(label) => self.process_extension(ExtensionType::try_from(label)?),
             ProcessImageDescriptor(graphic_control_extension) => {
                 let left_position = self.read_u16()?;
@@ -336,7 +344,7 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
 
                         local_color_table: None,
                         image_indexes: None,
-                    }
+                    },
                 };
 
                 let next_state = if local_color_table_flag {
@@ -346,14 +354,18 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                 };
 
                 Ok(next_state)
-            },
+            }
             ProcessLocalColorTable(mut graphic_block) => {
-                let size = graphic_block.render_block.local_color_table_size.expect("global color table size should not be none");
+                let size = graphic_block
+                    .render_block
+                    .local_color_table_size
+                    .expect("global color table size should not be none");
 
-                graphic_block.render_block.local_color_table = Some(self.read_bytes(size as usize)?);
+                graphic_block.render_block.local_color_table =
+                    Some(self.read_bytes(size as usize)?);
 
                 Ok(ProcessImageData(graphic_block))
-            },
+            }
             ProcessImageData(mut graphic_block) => {
                 let lzw_code_size = self.read_byte()?;
                 let data_stream = self.read_data_sub_blocks()?;
@@ -364,7 +376,7 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                 self.graphic_blocks.push(graphic_block);
 
                 Ok(DetermineNextBlock(None))
-            },
+            }
             _ => {
                 unimplemented!();
             }
@@ -384,48 +396,51 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                 let application_authentication_code = self.read_bytes(3)?;
                 let application_data = self.read_data_sub_blocks()?;
 
-                if application_identifier.as_ref() == "NETSCAPE" && application_authentication_code.as_ref() == "2.0".as_bytes() {
+                if application_identifier.as_ref() == "NETSCAPE"
+                    && application_authentication_code.as_ref() == "2.0".as_bytes()
+                {
                     // PERF: we check the length twice essentially with this and the try_into below, make it so it only happens once.
                     if application_data.len() != 3 {
-                        return Err(
-                            ParserError::UnexpectedApplicationDescriptorDataLength {
-                                name: application_identifier.into(),
-                                expected: 3,
-                                actual: application_data.len()
-                            }.into()
-                        );
+                        return Err(ParserError::UnexpectedApplicationDescriptorDataLength {
+                            name: application_identifier.into(),
+                            expected: 3,
+                            actual: application_data.len(),
+                        }
+                        .into());
                     }
 
                     debug_assert_eq!(1, application_data[0]);
 
                     let loop_number = u16::from_le_bytes(application_data[1..3].try_into()?);
-                    self.loop_count = Some(
-                        match loop_number {
-                            0 => LoopCount::Infinite,
-                            number => LoopCount::Number(number)
-                        }
-                    );
+                    self.loop_count = Some(match loop_number {
+                        0 => LoopCount::Infinite,
+                        number => LoopCount::Number(number),
+                    });
                 };
 
-                self.special_purpose_extensions.push(
-                    SpecialPurposeExtension::ApplicationBlock {
+                self.special_purpose_extensions
+                    .push(SpecialPurposeExtension::ApplicationBlock {
                         application_identifier,
                         application_authentication_code,
-                        application_data
-                    }
+                        application_data,
+                    });
+                debug!(
+                    "processed application block, got: {:#?}",
+                    self.special_purpose_extensions.last()
                 );
-                debug!("processed application block, got: {:#?}", self.special_purpose_extensions.last());
                 Ok(ParserState::DetermineNextBlock(None))
-            },
+            }
             Comment => {
                 // sequence of data sub-blocks
                 let data = self.read_data_sub_blocks()?;
-                debug!("processed comment block, got: {}", String::from_utf8_lossy(&data));
-                self.special_purpose_extensions.push(
-                    SpecialPurposeExtension::CommentBlock(data)
+                debug!(
+                    "processed comment block, got: {}",
+                    String::from_utf8_lossy(&data)
                 );
+                self.special_purpose_extensions
+                    .push(SpecialPurposeExtension::CommentBlock(data));
                 Ok(ParserState::DetermineNextBlock(None))
-            },
+            }
             GraphicControl => {
                 let block_size = self.read_byte()?;
                 debug_assert_eq!(block_size, 4);
@@ -460,13 +475,18 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                     transparent_color_flag,
 
                     delay_time,
-                    transparent_color_index
+                    transparent_color_index,
                 };
 
-                debug!("processed GraphicControlExtension: {:#?}", graphic_control_extension);
+                debug!(
+                    "processed GraphicControlExtension: {:#?}",
+                    graphic_control_extension
+                );
 
-                Ok(ParserState::DetermineNextBlock(Some(graphic_control_extension)))
-            },
+                Ok(ParserState::DetermineNextBlock(Some(
+                    graphic_control_extension,
+                )))
+            }
             PlainText => {
                 // i do not want to support this right now...
                 let block_size = self.read_byte()?;
@@ -478,7 +498,7 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                 self.read_data_sub_blocks()?;
 
                 Ok(ParserState::DetermineNextBlock(None))
-            },
+            }
         }
     }
 

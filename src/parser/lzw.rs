@@ -43,7 +43,6 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
                 // output {CODE} to index stream
                 indicies.extend_from_slice(code_indicies);
 
-
                 // get {CODE-1}
                 let mut new_code_table_entry = code_table.get(last_code).unwrap().clone();
                 //
@@ -57,7 +56,7 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
 
                 // CODE-1 = CODE
                 last_code = code as usize;
-            },
+            }
             None => {
                 // {CODE-1}
                 let mut new_code_table_entry = code_table.get(last_code).unwrap().clone();
@@ -76,7 +75,6 @@ pub fn lzw_decode(buf: &[u8], minimum_code_size: u32) -> Vec<u8> {
                 last_code = code as usize;
             }
         }
-
     }
 
     indicies
