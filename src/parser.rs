@@ -8,6 +8,7 @@ use thiserror::Error;
 use std::fmt::Debug;
 use std::io::prelude::*;
 use std::str;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]
 pub enum LoopCount {
@@ -18,6 +19,7 @@ pub enum LoopCount {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
 pub enum DisposalMethod {
+    None = 0,
     DoNotDispose = 1,
     RestoreToBackgroundColor = 2,
     RestoreToPrevious = 3,
@@ -26,6 +28,7 @@ pub enum DisposalMethod {
 impl DisposalMethod {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
+            0 => Some(DisposalMethod::None),
             1 => Some(DisposalMethod::DoNotDispose),
             2 => Some(DisposalMethod::RestoreToBackgroundColor),
             3 => Some(DisposalMethod::RestoreToPrevious),
@@ -70,11 +73,37 @@ impl TryFrom<u8> for ExtensionType {
 }
 
 #[derive(Debug, Clone)]
+pub struct Frame {
+    pub left_position: u16,
+    pub top_position: u16,
+    pub width: u16,
+    pub height: u16,
+    pub needs_user_input: bool,
+    pub delay_time: u16,
+    local_palette: Option<Box<[u8]>>,
+    global_palette: Option<Arc<[u8]>>,
+    indicies: Box<[u8]>,
+}
+
+impl Frame {
+    pub fn palette(&self) -> Option<&[u8]> {
+        if let Some(palette) = self.local_palette.as_ref() {
+            Some(palette.as_ref())
+        } else {
+            self.global_palette.as_ref().map(|arc_palette| arc_palette.as_ref())
+        }
+    }
+
+    pub fn indicies(&self) -> &[u8] {
+        self.indicies.as_ref()
+    }
+}
+
+
+#[derive(Debug, Clone)]
 struct GraphicControlExtension {
     disposal_method: Option<DisposalMethod>,
-    user_input_flag: bool,
-    transparent_color_flag: bool,
-
+    needs_user_input: bool,
     delay_time: u16,
     transparent_color_index: Option<u8>,
 }
@@ -88,7 +117,6 @@ struct TableBasedImage {
     width: u16,
     height: u16,
 
-    local_color_table_flag: bool,
     interlace_flag: bool,
     sort_flag: bool,
     local_color_table_size: Option<u32>,
@@ -190,10 +218,10 @@ pub struct Decoder<'a, T: Read> {
     inner: &'a mut T,
     version: Option<Version>,
     logical_screen_descriptor: Option<LogicalScreenDescriptor>,
-    global_color_table: Option<Box<[u8]>>,
+    global_color_table: Option<Arc<[u8]>>,
     special_purpose_extensions: Vec<SpecialPurposeExtension>,
-    graphic_blocks: Vec<GraphicBlock>,
     loop_count: Option<LoopCount>,
+    frames: Vec<Frame>,
 }
 
 impl<'a, T: Read + Debug> Decoder<'a, T> {
@@ -204,9 +232,13 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
             logical_screen_descriptor: None,
             global_color_table: None,
             special_purpose_extensions: Vec::new(),
-            graphic_blocks: Vec::new(),
             loop_count: None,
+            frames: Vec::new(),
         }
+    }
+
+    pub fn frames(&self) -> &[Frame] {
+        &self.frames
     }
 
     pub fn parse(&mut self) -> Result<()> {
@@ -289,7 +321,7 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                     .global_color_table_size
                     .expect("global color table size should not be none");
 
-                self.global_color_table = Some(self.read_bytes(size as usize)?);
+                self.global_color_table = Some(Arc::from(self.read_bytes(size as usize)?));
                 debug!(
                     "processed global color table, got: {:#?}",
                     self.global_color_table
@@ -337,7 +369,6 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                         top_position,
                         width,
                         height,
-                        local_color_table_flag,
                         interlace_flag,
                         sort_flag,
                         local_color_table_size,
@@ -373,7 +404,27 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                 let indicies = lzw::lzw_decode(&data_stream, lzw_code_size.into());
                 graphic_block.render_block.image_indexes = Some(indicies.into_boxed_slice());
 
-                self.graphic_blocks.push(graphic_block);
+                let rb = graphic_block.render_block;
+                let ext = graphic_block.extension.as_ref();
+
+                let global_palette = if rb.local_color_table.is_some() {
+                    None
+                } else {
+                    Some(self.global_color_table.as_ref().unwrap().clone())
+                };
+
+                let frame = Frame {
+                    left_position: rb.left_position,
+                    top_position: rb.top_position,
+                    width: rb.width,
+                    height: rb.height,
+                    needs_user_input: ext.map_or(false, |ext| ext.needs_user_input),
+                    delay_time: ext.map_or(1000, |ext| ext.delay_time),
+                    local_palette: rb.local_color_table,
+                    global_palette,
+                    indicies: rb.image_indexes.expect("expected there to be a processed gif frame")
+                };
+                self.frames.push(frame);
 
                 Ok(DetermineNextBlock(None))
             }
@@ -454,7 +505,7 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
                 // W = transparent color flag
 
                 let disposal_method = (packed_fields >> 2) & 0b00000111;
-                let user_input_flag = packed_fields & 0b00000010 != 0;
+                let needs_user_input = packed_fields & 0b00000010 != 0;
                 let transparent_color_flag = packed_fields & 0b00000001 != 0;
 
                 let delay_time = self.read_u16()?;
@@ -471,9 +522,7 @@ impl<'a, T: Read + Debug> Decoder<'a, T> {
 
                 let graphic_control_extension = GraphicControlExtension {
                     disposal_method: DisposalMethod::from_u8(disposal_method),
-                    user_input_flag,
-                    transparent_color_flag,
-
+                    needs_user_input,
                     delay_time,
                     transparent_color_index,
                 };
