@@ -3,11 +3,11 @@ use anyhow::Result;
 
 mod ppm_writer;
 mod parser;
+mod gfx;
 
 use parser::Decoder;
 
-fn main() -> Result<()> {
-    env_logger::init();
+fn spit_out_gif() -> Result<()> {
     let mut file = File::open("./homeless-nah-id-win.gif")?;
 
     let mut parser = Decoder::new(&mut file);
@@ -22,5 +22,12 @@ fn main() -> Result<()> {
         //indexes.chunks(10).for_each(|chunk|  println!("{:?}", chunk));
         ppm_writer::write_ppm(&format!("yeah/frame_{}.ppm", i), width, height, indexes, color_table)?;
     }
+
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    env_logger::init();
+    pollster::block_on(gfx::run());
     Ok(())
 }
