@@ -1,4 +1,4 @@
-use std::{fs::File, sync::Arc};
+use std::{fs::File, sync::Arc, time::{Duration, SystemTime}};
 use pollster::FutureExt as _;
 
 use winit::{
@@ -73,6 +73,7 @@ struct State<'a> {
     decoder: Decoder<File>,
     texture_bind_group: BindGroup,
     texture: Texture,
+    last_rendered: Option<SystemTime>,
 
     size: PhysicalSize<u32>,
     window: Arc<Window>,
@@ -112,6 +113,7 @@ impl<'a> State<'a> {
             window: window_arc,
             decoder,
             frame_idx: 0,
+            last_rendered: None
         }
     }
 
@@ -279,8 +281,22 @@ impl<'a> State<'a> {
         println!("Resized to {:?} from state!", new_size);
     }
 
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub fn write_next_texture(&mut self) {
         let frame = self.decoder.frames().get(self.frame_idx).unwrap();
+        let should_render = match self.last_rendered {
+            Some(time) => {
+                time.elapsed().unwrap() >= Duration::from_millis(frame.delay_time.into())
+            },
+            None => {
+                self.last_rendered = Some(SystemTime::now());
+                true
+            }
+        };
+
+        if !should_render {
+            return
+        }
+
         self.frame_idx += 1;
         if self.frame_idx == self.decoder.frames().len() {
             self.frame_idx = 0;
@@ -323,6 +339,10 @@ impl<'a> State<'a> {
             texture_size
         );
 
+    }
+
+    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        self.write_next_texture();
         let output = self.surface.get_current_texture().unwrap();
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
