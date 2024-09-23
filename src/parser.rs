@@ -214,8 +214,8 @@ enum ParserError {
 }
 
 #[derive(Debug)]
-pub struct Decoder<'a, T: Read> {
-    inner: &'a mut T,
+pub struct Decoder<T: Read> {
+    inner: T,
     version: Option<Version>,
     logical_screen_descriptor: Option<LogicalScreenDescriptor>,
     global_color_table: Option<Arc<[u8]>>,
@@ -224,8 +224,8 @@ pub struct Decoder<'a, T: Read> {
     frames: Vec<Frame>,
 }
 
-impl<'a, T: Read + Debug> Decoder<'a, T> {
-    pub fn new(inner: &'a mut T) -> Self {
+impl<T: Read + Debug> Decoder<T> {
+    pub fn new(inner: T) -> Self {
         Self {
             inner,
             version: None,

@@ -163,7 +163,7 @@ enum ParserError {
 }
 
 #[derive(Debug)]
-pub struct Decoder<'a, T: Read> {
+pub struct Decoder<T: Read> {
     inner: &'a mut T,
     version: Option<Version>,
     logical_screen_descriptor: Option<LogicalScreenDescriptor>,
